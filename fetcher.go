@@ -217,38 +217,7 @@ func main() {
 		log.Fatal(err)
 		return
 	}
-	/*
-		b, err := os.ReadFile("credentials.json")
-		if err != nil {
-			log.Fatalf("Unable to read client secret file: %v", err)
-		}
-		// If modifying these scopes, delete your previously saved token.json.
-		config, err := google.ConfigFromJSON(b, gmail.GmailReadonlyScope)
-		if err != nil {
-			log.Fatalf("Unable to parse client secret file to config: %v", err)
-		}
-		client := getClient(config)
 
-		srv, err := gmail.NewService(ctx, option.WithHTTPClient(client))
-		if err != nil {
-			log.Fatalf("Unable to retrieve Gmail client: %v", err)
-		}
-	*/
-	/*
-		user := "me"
-		r, err := srv.Users.Labels.List(user).Do()
-		if err != nil {
-			log.Fatalf("Unable to retrieve labels: %v", err)
-		}
-		if len(r.Labels) == 0 {
-			fmt.Println("No labels found.")
-			return
-		}
-		fmt.Println("Labels:")
-		for _, l := range r.Labels {
-			fmt.Printf("- %s\n", l.Name)
-		}
-	*/
 	fmt.Printf("S:%s Q:%s\n", apc.Store, apc.Query)
 	err = g.SearchMailAndFetchAttachFile(apc.Query)
 	if err != nil {
