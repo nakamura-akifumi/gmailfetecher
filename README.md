@@ -22,10 +22,22 @@ C:\TDM-GCC-64\bin
 https://developers.google.com/gmail/api/quickstart/go 
 の通りですが記載します。
 
+## プロジェクトを作成する
+
+事前にプロジェクトを作成します。
+
 ## API を有効にする
 
 以下のアドレスの画面から Gmail API を有効にします。
 https://console.cloud.google.com/flows/enableapi?apiid=gmail.googleapis.com
+
+![img.png](docs/img.png)
+
+## OAuth同意画面
+
+スコープでは、`.../auth/gmail.modify`  にチェックを付けて権限を付与します。
+
+![img_1.png](docs/img_1.png)
 
 ## 認証情報ファイルを作成する
 
@@ -53,10 +65,12 @@ JSONをダウンロードをクリックしてファイルを取得します。
 
 ## OAuth 認証を行う
 
+```shell
 git clone gmailfetcher
 cd gmailfetcher
 go mod tidy
 go run fetcher.go
+```
 
 ここで以下のスクリーンショットのように oauth 認証へのアドレスが表示されるので
 コンソールからアドレスをブラウザに貼り付けます。
@@ -65,11 +79,11 @@ go run fetcher.go
 
 アカウントを選択し
 
-![img_5.png](docs/img_5.png)
+![img_2.png](docs/img_2.png)
 
 続行をクリックし
 
-![img_6.png](docs/img_4.png)
+![img_3.png](docs/img_3.png)
 
 localhostにリダイレクトしエラーになりますが、
 ブラウザのアドレスバーに必要なパラメータがありますので
@@ -77,6 +91,10 @@ codeパラメータの値（～&code=xxxxx&～ となっている xxxxx の部�
 コンソールに貼り付けてエンターキーを押します。
 
 成功するとファイルの取得がはじまります。
+
+# コマンドライン
+
+
 
 # Author, Contributor
 

@@ -1,5 +1,5 @@
 {
-  "query" : "has:attachment after:2022/10/20",
+  "query" : "has:attachment",
   "store" : "./ext",
   "database": "./gmailapi.db"
 }

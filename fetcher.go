@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"encoding/base64"
 	"encoding/json"
+	"flag"
 	"fmt"
 	_ "github.com/mattn/go-sqlite3"
 	"golang.org/x/oauth2"
@@ -15,8 +16,10 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"regexp"
 	"strconv"
 	"strings"
+	"time"
 )
 
 type Config struct {
@@ -284,6 +287,12 @@ func prepareDatabase(apc *Config) (*sql.DB, error) {
 }
 
 func main() {
+
+	var (
+		afterdayfilterstr = flag.String("after", "", "afterday filter (2d 3w 4m 5y)")
+	)
+	flag.Parse()
+
 	apc, err := loadConfig()
 	if err != nil {
 		log.Fatal(err)
@@ -303,8 +312,43 @@ func main() {
 		return
 	}
 
-	log.Printf("S:%s Q:%s\n", apc.Store, apc.Query)
-	err = g.SearchMailAndFetchAttachFile(apc.Query)
+	query := apc.Query
+	if *afterdayfilterstr != "" {
+		r := regexp.MustCompile(`(\d)([dwmy])`)
+		rs := r.FindAllStringSubmatch(*afterdayfilterstr, -1)
+		t := time.Now()
+
+		if len(rs) == 0 {
+			fmt.Println("paramter -after format error")
+			return
+		}
+
+		if len(rs) > 0 && len(rs[0]) == 3 {
+			yadd := 0
+			madd := 0
+			dadd := 0
+
+			switch rs[0][2] {
+			case "y":
+				yadd, _ = strconv.Atoi(rs[0][1])
+				yadd = yadd * -1
+			case "m":
+				madd, _ = strconv.Atoi(rs[0][1])
+				madd = madd * -1
+			case "w":
+				dadd, _ = strconv.Atoi(rs[0][1])
+				dadd = dadd * -7
+			case "d":
+				dadd, _ = strconv.Atoi(rs[0][1])
+				dadd = dadd * -1
+			}
+
+			t_add := t.AddDate(yadd, madd, dadd)
+			query = query + " after:" + t_add.Format("2006/1/2")
+		}
+	}
+	log.Printf("S:%s Q:%s q:%s\n", apc.Store, apc.Query, query)
+	err = g.SearchMailAndFetchAttachFile(query)
 	if err != nil {
 		log.Println(err)
 	}
