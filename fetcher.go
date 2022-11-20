@@ -2,9 +2,11 @@ package main
 
 import (
 	"context"
+	"database/sql"
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
+	_ "github.com/mattn/go-sqlite3"
 	"golang.org/x/oauth2"
 	"golang.org/x/oauth2/google"
 	"google.golang.org/api/gmail/v1"
@@ -14,32 +16,61 @@ import (
 	"os"
 	"path/filepath"
 	"strconv"
+	"strings"
 )
 
 type Config struct {
-	Query string `json:"query"`
-	Store string `json:"store"`
+	Query    string `json:"query"`
+	Store    string `json:"store"`
+	Database string `json:"database"`
 }
 
 type GmailAdapter struct {
 	srv       *gmail.Service
 	user      string
 	appconfig Config
+	db        *sql.DB
 }
 
 func (g *GmailAdapter) SearchMailAndFetchAttachFile(query string) error {
+	var output string
+
 	res, err := g.srv.Users.Messages.List(g.user).Q(query).Do()
 	if err != nil {
 		return err
 	}
-	fmt.Printf("response message size:%d\n", len(res.Messages))
+	log.Printf("response message size:%d\n", len(res.Messages))
 	for _, e := range res.Messages {
-		fmt.Printf("MessageID:%s\n", e.Id)
-		msgresponse, _ := g.srv.Users.Messages.Get(g.user, e.Id).Format("full").Do()
-		if len(msgresponse.Payload.Parts) > 0 {
-			for _, part := range msgresponse.Payload.Parts {
-				g.pluckFile(e.Id, part)
+		log.Printf("MessageID:%s\n", e.Id)
+
+		sqlStmt := "select count(*) from messages where messageid = ?"
+		err = g.db.QueryRow(sqlStmt, e.Id).Scan(&output)
+		if err != nil {
+			log.Fatal(err)
+		}
+		if output == "0" {
+			msgresponse, _ := g.srv.Users.Messages.Get(g.user, e.Id).Format("full").Do()
+			if len(msgresponse.Payload.Parts) > 0 {
+				for _, part := range msgresponse.Payload.Parts {
+					g.pluckFile(e.Id, part)
+				}
 			}
+			query := `INSERT INTO messages (messageid) VALUES (?)`
+			result, err := g.db.Exec(query, e.Id)
+			if err != nil {
+				log.Printf("error occured: insert data into table\n")
+				log.Println(err)
+				return err
+			}
+			// 挿入されたレコード数を取得
+			count, err := result.RowsAffected()
+			if err != nil {
+				log.Println(err)
+				return err
+			}
+			log.Printf("%d rows inserted\n", count)
+		} else {
+			log.Println("skip")
 		}
 	}
 	return nil
@@ -68,7 +99,9 @@ func (g *GmailAdapter) pluckFile(messageId string, part *gmail.MessagePart) {
 			log.Fatal(err)
 		}
 
-		filename := g.buildFilename(messageId, part.Filename)
+		s := strings.Replace(part.Filename, "\\", "_", -1)
+		s = strings.Replace(s, "/", "_", -1)
+		filename := g.buildFilename(messageId, s)
 		f, err := os.Create(filename)
 		if err != nil {
 			panic(err)
@@ -111,7 +144,7 @@ func (g *GmailAdapter) buildFilename(messageId string, partfilename string) stri
 	return filename
 }
 
-func NewGmailClient(ctx context.Context, apc Config) (*GmailAdapter, error) {
+func NewGmailClient(ctx context.Context, apc Config, db *sql.DB) (*GmailAdapter, error) {
 	b, err := os.ReadFile("credentials.json")
 	if err != nil {
 		log.Fatalf("Unable to read client secret file: %v", err)
@@ -130,7 +163,7 @@ func NewGmailClient(ctx context.Context, apc Config) (*GmailAdapter, error) {
 		return nil, err
 	}
 
-	return &GmailAdapter{srv: srv, user: "me", appconfig: apc}, nil
+	return &GmailAdapter{srv: srv, user: "me", appconfig: apc, db: db}, nil
 }
 
 func FileExists(filename string) bool {
@@ -224,6 +257,32 @@ func saveToken(path string, token *oauth2.Token) {
 	}
 }
 
+func prepareDatabase(apc *Config) (*sql.DB, error) {
+	db, err := sql.Open("sqlite3", apc.Database)
+	if err != nil {
+		log.Fatal(err)
+	}
+	//defer db.Close()
+
+	var output string
+	sqlStmt := "SELECT COUNT(*) FROM sqlite_master WHERE TYPE='table' AND name='messages'"
+	err = db.QueryRow(sqlStmt).Scan(&output)
+	if err != nil {
+		log.Fatal(err)
+	}
+	//fmt.Println(output)
+	if output != "1" {
+		sqlStmt = "create table messages (messageid varchar not null primary key, messagedatetime datetime)"
+		_, err = db.Exec(sqlStmt)
+		if err != nil {
+			log.Printf("%q: %s\n", err, sqlStmt)
+			return nil, err
+		}
+	}
+
+	return db, nil
+}
+
 func main() {
 	apc, err := loadConfig()
 	if err != nil {
@@ -231,8 +290,14 @@ func main() {
 		return
 	}
 
+	db, err := prepareDatabase(apc)
+	if err != nil {
+		log.Fatal(err)
+		return
+	}
+
 	ctx := context.Background()
-	g, err := NewGmailClient(ctx, *apc)
+	g, err := NewGmailClient(ctx, *apc, db)
 	if err != nil {
 		log.Fatal(err)
 		return
@@ -241,7 +306,8 @@ func main() {
 	log.Printf("S:%s Q:%s\n", apc.Store, apc.Query)
 	err = g.SearchMailAndFetchAttachFile(apc.Query)
 	if err != nil {
-		log.Fatal(err)
+		log.Println(err)
 	}
 
+	g.db.Close()
 }

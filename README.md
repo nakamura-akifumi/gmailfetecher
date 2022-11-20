@@ -2,8 +2,23 @@
 
 Gmail API を使ってメールの添付ファイルをダウンロードするサンプルプログラムです。
 
-# 事前準備
+# 事前準備１
 
+github.com/mattn/go-sqlite3 はcgoパッケージであるため、
+go-sqlite3を使用してアプリをビルドする場合は、gccが必要です。
+
+Windowsで利用する場合は以下のアドレスからgcc toolchainのインストールを行います。
+https://jmeubank.github.io/tdm-gcc/
+
+以下のインストールファイルをダウンロードしてインストールします。
+https://github.com/jmeubank/tdm-gcc/releases/download/v10.3.0-tdm64-2/tdm64-gcc-10.3.0-2.exe
+
+インストールをしたらインストールフォルダのbinをPATHに追加します。
+デフォルトでは
+C:\TDM-GCC-64\bin
+かもしれません。
+
+# 事前準備２
 https://developers.google.com/gmail/api/quickstart/go 
 の通りですが記載します。
 
