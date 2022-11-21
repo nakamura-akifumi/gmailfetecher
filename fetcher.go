@@ -20,7 +20,6 @@ import (
 	"regexp"
 	"strconv"
 	"strings"
-	"syscall"
 	"time"
 )
 
@@ -164,7 +163,7 @@ func NewGmailClient(ctx context.Context, apc Config, db *sql.DB) (*GmailAdapter,
 		log.Println(err)
 		var perr *os.PathError
 		if errors.As(err, &perr) {
-			if errors.Is(err, syscall.ERROR_FILE_NOT_FOUND) && perr.Path == "token.json" {
+			if errors.Is(err, os.ErrNotExist) && perr.Path == "token.json" {
 				tok := getTokenFromWeb(config)
 				tokFile := "token.json"
 				saveToken(tokFile, tok)
