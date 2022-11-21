@@ -47,15 +47,15 @@ https://console.cloud.google.com/apis/credentials
 APIとサービス ＞ 認証情報
 をクリックします。
 
-![img.png](docs/img.png)
+![img_7.png](docs/img_7.png)
 
 認証情報を作成 をクリックして OAuth クライアントID をクリックする。
 
-![img_1.png](docs/img_1.png)
+![img_8.png](docs/img_8.png)
 
 デスクトップアプリで作成します。
 
-![img_2.png](docs/img_2.png)
+![img_9.png](docs/img_9.png)
 
 OAuthクライアントを作成しました。と表示されるので
 JSONをダウンロードをクリックしてファイルを取得します。
@@ -90,11 +90,14 @@ localhostにリダイレクトしエラーになりますが、
 codeパラメータの値（～&code=xxxxx&～ となっている xxxxx の部分）をコピーし、
 コンソールに貼り付けてエンターキーを押します。
 
-成功するとファイルの取得がはじまります。
-
 # コマンドライン
 
-
+go run fetcher.go 
+ -after gmail の after フィルタを利用する
+   1d: 本日から1日前からのメールを取得する
+   2w: 本日から2週間前からのメールを取得する
+   3m: 本日から3か月前からのメールを取得する
+   4y: 本日から4年前からのメールを取得する
 
 # Author, Contributor
 

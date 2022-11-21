@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"encoding/base64"
 	"encoding/json"
+	"errors"
 	"flag"
 	"fmt"
 	_ "github.com/mattn/go-sqlite3"
@@ -19,6 +20,7 @@ import (
 	"regexp"
 	"strconv"
 	"strings"
+	"syscall"
 	"time"
 )
 
@@ -89,7 +91,6 @@ func (g *GmailAdapter) pluckFile(messageId string, part *gmail.MessagePart) {
 			attachPart, err := g.srv.Users.Messages.Attachments.Get(g.user, messageId, part.Body.AttachmentId).Do()
 			if err != nil {
 				log.Fatal(err)
-				panic(err)
 			}
 			if attachPart == nil {
 				panic(err)
@@ -158,7 +159,20 @@ func NewGmailClient(ctx context.Context, apc Config, db *sql.DB) (*GmailAdapter,
 		log.Fatalf("Unable to parse client secret file to config: %v", err)
 		return nil, err
 	}
-	client := getClient(config)
+	client, err := getClient(config)
+	if err != nil {
+		log.Println(err)
+		var perr *os.PathError
+		if errors.As(err, &perr) {
+			if errors.Is(err, syscall.ERROR_FILE_NOT_FOUND) && perr.Path == "token.json" {
+				tok := getTokenFromWeb(config)
+				tokFile := "token.json"
+				saveToken(tokFile, tok)
+				return nil, fmt.Errorf("generate tokenfile")
+			}
+		}
+		return nil, err
+	}
 
 	srv, err := gmail.NewService(ctx, option.WithHTTPClient(client))
 	if err != nil {
@@ -193,17 +207,18 @@ func loadConfig() (*Config, error) {
 }
 
 // Retrieve a token, saves the token, then returns the generated client.
-func getClient(config *oauth2.Config) *http.Client {
+func getClient(config *oauth2.Config) (*http.Client, error) {
 	// The file token.json stores the user's access and refresh tokens, and is
 	// created automatically when the authorization flow completes for the first
 	// time.
 	tokFile := "token.json"
 	tok, err := tokenFromFile(tokFile)
 	if err != nil {
-		tok = getTokenFromWeb(config)
-		saveToken(tokFile, tok)
+		return nil, err
+		//tok = getTokenFromWeb(config)
+		//saveToken(tokFile, tok)
 	}
-	return config.Client(context.Background(), tok)
+	return config.Client(context.Background(), tok), nil
 }
 
 // Request a token from the web, then returns the retrieved token.
@@ -286,10 +301,59 @@ func prepareDatabase(apc *Config) (*sql.DB, error) {
 	return db, nil
 }
 
+func parseParameterAfterDatetime(afterdayfilterstr string) (string, error) {
+	t := time.Now()
+	datetimestr := ""
+
+	r := regexp.MustCompile(`(\d)([dwmy])`)
+	rs := r.FindAllStringSubmatch(afterdayfilterstr, -1)
+
+	if len(rs) > 0 {
+		if len(rs) > 0 && len(rs[0]) == 3 {
+			yadd := 0
+			madd := 0
+			dadd := 0
+
+			switch rs[0][2] {
+			case "y":
+				yadd, _ = strconv.Atoi(rs[0][1])
+				yadd = yadd * -1
+			case "m":
+				madd, _ = strconv.Atoi(rs[0][1])
+				madd = madd * -1
+			case "w":
+				dadd, _ = strconv.Atoi(rs[0][1])
+				dadd = dadd * -7
+			case "d":
+				dadd, _ = strconv.Atoi(rs[0][1])
+				dadd = dadd * -1
+			}
+
+			tAdd := t.AddDate(yadd, madd, dadd)
+			datetimestr = tAdd.Format("2006/1/2")
+		}
+	} else {
+		r = regexp.MustCompile(`^((\d{4})-(\d{2})-(\d{2}))$`)
+		rs = r.FindAllStringSubmatch(afterdayfilterstr, -1)
+		if len(rs) == 0 {
+			fmt.Println("paramter -after format error")
+			return "", fmt.Errorf("paramter format error")
+		}
+
+		t, err := time.Parse("2006-01-02", afterdayfilterstr)
+		if err != nil {
+			return "", err
+		}
+
+		datetimestr = t.Format("2006/1/2")
+	}
+	return datetimestr, nil
+}
+
 func main() {
 
 	var (
-		afterdayfilterstr = flag.String("after", "", "afterday filter (2d 3w 4m 5y)")
+		afterdayfilterstr = flag.String("after", "", "afterday filter (2d 3w 4m 5y or 2012-03-04)")
 	)
 	flag.Parse()
 
@@ -314,38 +378,13 @@ func main() {
 
 	query := apc.Query
 	if *afterdayfilterstr != "" {
-		r := regexp.MustCompile(`(\d)([dwmy])`)
-		rs := r.FindAllStringSubmatch(*afterdayfilterstr, -1)
-		t := time.Now()
-
-		if len(rs) == 0 {
-			fmt.Println("paramter -after format error")
+		s, err := parseParameterAfterDatetime(*afterdayfilterstr)
+		if err != nil {
+			fmt.Println(err)
+			g.db.Close()
 			return
 		}
-
-		if len(rs) > 0 && len(rs[0]) == 3 {
-			yadd := 0
-			madd := 0
-			dadd := 0
-
-			switch rs[0][2] {
-			case "y":
-				yadd, _ = strconv.Atoi(rs[0][1])
-				yadd = yadd * -1
-			case "m":
-				madd, _ = strconv.Atoi(rs[0][1])
-				madd = madd * -1
-			case "w":
-				dadd, _ = strconv.Atoi(rs[0][1])
-				dadd = dadd * -7
-			case "d":
-				dadd, _ = strconv.Atoi(rs[0][1])
-				dadd = dadd * -1
-			}
-
-			t_add := t.AddDate(yadd, madd, dadd)
-			query = query + " after:" + t_add.Format("2006/1/2")
-		}
+		query = query + " after:" + s
 	}
 	log.Printf("S:%s Q:%s q:%s\n", apc.Store, apc.Query, query)
 	err = g.SearchMailAndFetchAttachFile(query)
