@@ -1,5 +1,6 @@
 {
   "query" : "has:attachment",
   "store" : "./ext",
-  "database": "./gmailapi.db"
+  "database": "./gmailapi.db",
+  "storefilename": "{{.BaseName}}_{{.MessageId}}{{.ExtName}}"
 }

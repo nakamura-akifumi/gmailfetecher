@@ -1,6 +1,7 @@
 package main
 
 import (
+	"bytes"
 	"context"
 	"database/sql"
 	"encoding/base64"
@@ -20,13 +21,15 @@ import (
 	"regexp"
 	"strconv"
 	"strings"
+	"text/template"
 	"time"
 )
 
 type Config struct {
-	Query    string `json:"query"`
-	Store    string `json:"store"`
-	Database string `json:"database"`
+	Query         string `json:"query"`
+	Store         string `json:"store"`
+	Database      string `json:"database"`
+	StoreFilename string `json:"storefilename"`
 }
 
 type GmailAdapter struct {
@@ -34,6 +37,15 @@ type GmailAdapter struct {
 	user      string
 	appconfig Config
 	db        *sql.DB
+}
+
+type FileTemplateData struct {
+	PartFileName string
+	FileName     string
+	ExtName      string
+	BaseName     string
+	StoreDirName string
+	MessageId    string
 }
 
 func (g *GmailAdapter) SearchMailAndFetchAttachFile(query string) error {
@@ -135,7 +147,27 @@ func (g *GmailAdapter) buildFilename(messageId string, partfilename string) stri
 	fName := filepath.Base(partfilename)
 	extName := filepath.Ext(partfilename)
 	bName := fName[:len(fName)-len(extName)]
-	filename := filepath.Join(g.appconfig.Store, partfilename)
+
+	ftd := FileTemplateData{
+		PartFileName: partfilename,
+		FileName:     fName,
+		ExtName:      extName,
+		BaseName:     bName,
+		StoreDirName: g.appconfig.Store,
+		MessageId:    messageId,
+	}
+
+	t, err := template.New("filetemplate").Parse(g.appconfig.StoreFilename)
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	var wbuf bytes.Buffer
+	if err = t.Execute(&wbuf, ftd); err != nil {
+		log.Fatal(err)
+	}
+	filename := filepath.Join(g.appconfig.Store, wbuf.String())
+
 	if FileExists(filename) {
 		for i := 2; ; i++ {
 			filename = filepath.Join(g.appconfig.Store, bName+"_"+strconv.Itoa(i)+extName)
